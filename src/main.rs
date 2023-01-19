@@ -11,6 +11,9 @@ struct MainCamera;
 #[derive(Resource)]
 struct FoodTimer(Timer);
 
+#[derive(Component)]
+struct BackgroundTile;
+
 const BOUNDS: Vec2 = Vec2::new(1200.0, 640.0);
 
 fn main() {
@@ -30,6 +33,7 @@ struct Player {
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let bg_tile: Handle<Image> = asset_server.load("background-tile.png");
     let snake_handle = asset_server.load("red_circle.png");
     commands.insert_resource(FoodTimer(Timer::new(Duration::from_secs(2), TimerMode::Repeating)));
     commands.spawn((Camera2dBundle::default(), MainCamera));
@@ -42,6 +46,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             movement_speed: 200.0,
             rotation_speed: f32::to_radians(180.0),
         },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            texture: bg_tile.clone(),
+            ..default()
+        },
+        BackgroundTile
     ));
 }
 
