@@ -1,116 +1,89 @@
-use bevy::{prelude::*, time::FixedTimestep};
+use bevy::prelude::*;
 use rand::Rng;
+use std::time::Duration;
 
-const TIME_STEP: f32 = 1.0 / 120.0;
+#[derive(Component)]
+struct Food;
+
+#[derive(Component)]
+struct MainCamera;
+
+#[derive(Resource)]
+struct FoodTimer(Timer);
+
 const BOUNDS: Vec2 = Vec2::new(1200.0, 640.0);
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_non_send_resource(ElapsedTime(Timer::from_seconds(1.0, TimerMode::Repeating)))
         .add_startup_system(setup)
-        .add_system_set(
-            SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
-                .with_system(player_movement_system)
-                .with_system(spawn_food_system),
-        )
+        .add_system(player_movement_system)
+        .add_system(spawn_food)
         .add_system(bevy::window::close_on_esc)
         .run();
 }
 
-/// player component
 #[derive(Component)]
 struct Player {
-    /// linear speed in meters per second
     movement_speed: f32,
-    /// rotation speed in radians per second
     rotation_speed: f32,
 }
 
-#[derive(Component)]
-struct Food {
-    amount: f32,
-}
-
-#[derive(Resource)]
-struct ElapsedTime(Timer);
-
-/// Add the game's entities to our world and creates an orthographic camera for 2D rendering.
-///
-/// The Bevy coordinate system is the same for 2D and 3D, in terms of 2D this means that:
-///
-/// * `X` axis goes from left to right (`+X` points right)
-/// * `Y` axis goes from bottom to top (`+Y` point up)
-/// * `Z` axis goes from far to near (`+Z` points towards you, out of the screen)
-///
-/// The origin is at the center of the screen.
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let snake_handle = asset_server.load("red_circle.png");
-
-    // 2D orthographic camera
-    commands.spawn(Camera2dBundle::default());
-
-    // player controlled snake
+    commands.insert_resource(FoodTimer(Timer::new(Duration::from_secs(10), TimerMode::Repeating)));
+    commands.spawn((Camera2dBundle::default(), MainCamera));
     commands.spawn((
         SpriteBundle {
             texture: snake_handle.clone(),
             ..default()
         },
         Player {
-            movement_speed: 500.0,                  // metres per second
-            rotation_speed: f32::to_radians(360.0), // degrees per second
+            movement_speed: 200.0,
+            rotation_speed: f32::to_radians(180.0),
         },
     ));
 }
 
-/// Demonstrates applying rotation and movement based on keyboard input.
 fn player_movement_system(
-    keyboard_input: Res<Input<KeyCode>>,
+    time: Res<Time>,
+    windows: Res<Windows>,
+    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut query: Query<(&Player, &mut Transform)>,
 ) {
-    let (ship, mut transform) = query.single_mut();
+    let delta = time.delta_seconds();
+    let (minhoca, mut transform) = query.single_mut();
+    let window = windows.get_primary().unwrap();
+    let (camera, camera_transform) = q_camera.single();
 
-    let mut rotation_factor = 0.0;
-    let mut movement_factor = 0.5;
+    let rotation_sign = if let Some(screen_pos) = window.cursor_position() {
+        let win_size = Vec2::new(window.width() as f32, window.height() as f32);
+        let ndc = (screen_pos / win_size) * 2.0 - Vec2::ONE;
+        let ndc_to_world = camera_transform.compute_matrix() * camera.projection_matrix().inverse();
+        let pos = ndc_to_world.project_point3(ndc.extend(-1.0)).truncate();
 
-    if keyboard_input.pressed(KeyCode::Left) {
-        rotation_factor += 1.0;
-    }
+        let movement_direction = (transform.rotation * Vec3::Y).truncate();
+        let mouse = Vec2::new(pos.x, pos.y);
+        let mouse_direction = mouse - transform.translation.truncate();
+        let side = movement_direction.perp().dot(mouse_direction);
+        side.signum()
+    } else {
+        0.0
+    };
 
-    if keyboard_input.pressed(KeyCode::Right) {
-        rotation_factor -= 1.0;
-    }
-
-    if keyboard_input.pressed(KeyCode::Up) {
-        movement_factor += 0.5;
-    }
-
-    if keyboard_input.pressed(KeyCode::Down) {
-        movement_factor -= 1.0;
-    }
-
-    // update the ship rotation around the Z axis (perpendicular to the 2D plane of the screen)
-    transform.rotate_z(rotation_factor * ship.rotation_speed * TIME_STEP);
-
-    // get the ship's forward vector by applying the current rotation to the ships initial facing vector
+    transform.rotate_z(rotation_sign * minhoca.rotation_speed * delta);
     let movement_direction = transform.rotation * Vec3::Y;
-    // get the distance the ship will move based on direction, the ship's movement speed and delta time
-    let movement_distance = movement_factor * ship.movement_speed * TIME_STEP;
-    // create the change in translation using the new movement direction and distance
-    let translation_delta = movement_direction * movement_distance;
-    // update the ship translation with our new translation delta
-    transform.translation += translation_delta;
+    let movement_distance = minhoca.movement_speed * delta;
+    transform.translation += movement_direction * movement_distance;
 
-    // bound the ship within the invisible level bounds
     let extents = Vec3::from((BOUNDS / 2.0, 0.0));
     transform.translation = transform.translation.min(extents).max(-extents);
 }
 
-fn spawn_food_system(
+fn spawn_food(
     mut commands: Commands,
     time: Res<Time>,
-    mut timer: ResMut<ElapsedTime>,
+    mut timer: ResMut<FoodTimer>,
     asset_server: Res<AssetServer>,
 ) {
     let food_handle = asset_server.load("food.png");
@@ -127,7 +100,7 @@ fn spawn_food_system(
                 transform: Transform::from_xyz(x, y, 0.0),
                 ..default()
             },
-            Food { amount: 1.0 },
+            Food,
         ));
     }
 }
