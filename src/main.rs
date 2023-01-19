@@ -31,7 +31,7 @@ struct Player {
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let snake_handle = asset_server.load("red_circle.png");
-    commands.insert_resource(FoodTimer(Timer::new(Duration::from_secs(10), TimerMode::Repeating)));
+    commands.insert_resource(FoodTimer(Timer::new(Duration::from_secs(2), TimerMode::Repeating)));
     commands.spawn((Camera2dBundle::default(), MainCamera));
     commands.spawn((
         SpriteBundle {
@@ -48,18 +48,18 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn player_movement_system(
     time: Res<Time>,
     windows: Res<Windows>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut query: Query<(&Player, &mut Transform)>,
+    mut q_camera: Query<(&Camera, &mut Transform, &GlobalTransform), With<MainCamera>>,
+    mut q_player: Query<(&Player, &mut Transform), Without<MainCamera>>,
 ) {
     let delta = time.delta_seconds();
-    let (minhoca, mut transform) = query.single_mut();
+    let (minhoca, mut transform) = q_player.single_mut();
     let window = windows.get_primary().unwrap();
-    let (camera, camera_transform) = q_camera.single();
+    let (camera, mut cam_transform, cam_global_transform) = q_camera.single_mut();
 
     let rotation_sign = if let Some(screen_pos) = window.cursor_position() {
         let win_size = Vec2::new(window.width() as f32, window.height() as f32);
         let ndc = (screen_pos / win_size) * 2.0 - Vec2::ONE;
-        let ndc_to_world = camera_transform.compute_matrix() * camera.projection_matrix().inverse();
+        let ndc_to_world = cam_global_transform.compute_matrix() * camera.projection_matrix().inverse();
         let pos = ndc_to_world.project_point3(ndc.extend(-1.0)).truncate();
 
         let movement_direction = (transform.rotation * Vec3::Y).truncate();
@@ -78,6 +78,8 @@ fn player_movement_system(
 
     let extents = Vec3::from((BOUNDS / 2.0, 0.0));
     transform.translation = transform.translation.min(extents).max(-extents);
+    cam_transform.translation.x = transform.translation.x;
+    cam_transform.translation.y = transform.translation.y;
 }
 
 fn spawn_food(
