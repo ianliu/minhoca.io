@@ -22,6 +22,7 @@ fn main() {
         .add_startup_system(setup)
         .add_system(player_movement_system)
         .add_system(spawn_food)
+        .add_system(background_tile)
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -33,26 +34,17 @@ struct Player {
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let bg_tile: Handle<Image> = asset_server.load("background-tile.png");
-    let snake_handle = asset_server.load("red_circle.png");
     commands.insert_resource(FoodTimer(Timer::new(Duration::from_secs(2), TimerMode::Repeating)));
     commands.spawn((Camera2dBundle::default(), MainCamera));
     commands.spawn((
         SpriteBundle {
-            texture: snake_handle.clone(),
+            texture: asset_server.load("red_circle.png"),
             ..default()
         },
         Player {
             movement_speed: 200.0,
             rotation_speed: f32::to_radians(180.0),
         },
-    ));
-    commands.spawn((
-        SpriteBundle {
-            texture: bg_tile.clone(),
-            ..default()
-        },
-        BackgroundTile
     ));
 }
 
@@ -91,6 +83,28 @@ fn player_movement_system(
     transform.translation = transform.translation.min(extents).max(-extents);
     cam_transform.translation.x = transform.translation.x;
     cam_transform.translation.y = transform.translation.y;
+}
+
+fn background_tile(
+    mut commands: Commands,
+    windows: Res<Windows>,
+    q_tiles: Query<(Entity,), With<BackgroundTile>>,
+    q_camera: Query<(&Camera, &Transform, &GlobalTransform), With<MainCamera>>,
+    asset_server: Res<AssetServer>,
+) {
+    let window = windows.get_primary().unwrap();
+    let (camera, cam_transform, cam_global_transform) = q_camera.single();
+    let win_size = Vec2::new(window.width() as f32, window.height() as f32);
+    let ndc_to_world = cam_global_transform.compute_matrix() * camera.projection_matrix().inverse();
+    // let pos = ndc_to_world.project_point3(ndc.extend(-1.0)).truncate();
+
+    commands.spawn((
+        SpriteBundle {
+            texture: asset_server.load("background-tile.png"),
+            ..default()
+        },
+        BackgroundTile
+    ));
 }
 
 fn spawn_food(
