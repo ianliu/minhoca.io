@@ -1,6 +1,8 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
 use rand::Rng;
 use std::time::Duration;
+
+use std::f32::consts::PI;
 
 #[derive(Component)]
 struct Food;
@@ -32,9 +34,13 @@ struct Player {
     rotation_speed: f32,
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     let bg_tile: Handle<Image> = asset_server.load("background-tile.png");
-    let border_handle: Handle<Image> = asset_server.load("border.png");
     let snake_handle = asset_server.load("minhoca_head.png");
     commands.insert_resource(FoodTimer(Timer::new(
         Duration::from_millis(10),
@@ -52,9 +58,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             rotation_speed: f32::to_radians(180.0),
         },
     ));
+
+    // TODO: get width and height from bg_tile
     let width = 512.0;
     let height = 591.0;
-
     for i in -5..5 {
         for j in -5..5 {
             commands.spawn((
@@ -67,14 +74,19 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
         }
     }
-    commands.spawn((
-        SpriteBundle {
-            texture: border_handle,
-            transform: Transform::from_xyz(0.0, 0.0, 2.0),
-            ..default()
-        },
-        BackgroundTile,
-    ));
+    let torus = shape::Torus {
+        radius: 1040.,
+        ring_radius: 16.,
+        subdivisions_segments: 128,
+        subdivisions_sides: 4,
+    };
+    commands.spawn(MaterialMesh2dBundle {
+        mesh: meshes.add(torus.into()).into(),
+        material: materials.add(ColorMaterial::from(Color::PINK)),
+        transform: Transform::from_translation(Vec3::new(0., 0., 10.))
+            .with_rotation(Quat::from_rotation_x(PI / 2.)),
+        ..default()
+    });
 }
 
 fn player_movement_system(
