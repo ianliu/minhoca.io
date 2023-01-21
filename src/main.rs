@@ -17,6 +17,8 @@ struct FoodTimer(Timer);
 struct BackgroundTile;
 
 const BOUNDS: f32 = 1024.0;
+const MAX_FOOD_DENSITY: f32 = 2.0 / 64.0 / 64.0;
+const MAX_FOOD: usize = (BOUNDS * BOUNDS * PI * MAX_FOOD_DENSITY) as usize;
 
 fn main() {
     App::new()
@@ -75,7 +77,7 @@ fn setup(
         }
     }
     let torus = shape::Torus {
-        radius: 1040.,
+        radius: BOUNDS + 16.,
         ring_radius: 16.,
         subdivisions_segments: 128,
         subdivisions_sides: 4,
@@ -138,12 +140,14 @@ fn spawn_food(
     time: Res<Time>,
     mut timer: ResMut<FoodTimer>,
     asset_server: Res<AssetServer>,
+    q_food: Query<(), With<Food>>,
 ) {
     let food_handle = asset_server.load("food.png");
 
     let mut rng = rand::thread_rng();
+    let n_food = q_food.iter().count();
 
-    if timer.0.tick(time.delta()).just_finished() {
+    if timer.0.tick(time.delta()).just_finished() && n_food < MAX_FOOD {
         let mut x = rng.gen_range(-BOUNDS..BOUNDS);
         let mut y = rng.gen_range(-BOUNDS..BOUNDS);
         while x * x + y * y > BOUNDS * BOUNDS {
