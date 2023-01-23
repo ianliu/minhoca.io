@@ -1,4 +1,4 @@
-use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
+use bevy::{prelude::*, sprite::MaterialMesh2dBundle, sprite::Mesh2dHandle};
 use rand::Rng;
 use std::time::Duration;
 
@@ -76,14 +76,16 @@ fn setup(
             ));
         }
     }
-    let torus = shape::Torus {
+
+    // Torus is a 3d shape, so we need to ratate it to face the camera.
+    let torus_mesh = Mesh::from(shape::Torus {
         radius: BOUNDS + 16.,
         ring_radius: 16.,
         subdivisions_segments: 128,
         subdivisions_sides: 4,
-    };
+    });
     commands.spawn(MaterialMesh2dBundle {
-        mesh: meshes.add(torus.into()).into(),
+        mesh: Mesh2dHandle::from(meshes.add(torus_mesh)),
         material: materials.add(ColorMaterial::from(Color::PINK)),
         transform: Transform::from_translation(Vec3::new(0., 0., 10.))
             .with_rotation(Quat::from_rotation_x(PI / 2.)),
