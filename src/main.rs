@@ -2,6 +2,9 @@ use bevy::{prelude::*, sprite::MaterialMesh2dBundle, sprite::Mesh2dHandle};
 
 use std::f32::consts::PI;
 
+const BOUNDS: f32 = 1024.0;
+const SEGMENT_DIST: f32 = 32.0;
+
 #[derive(Component)]
 struct MainCamera;
 
@@ -17,20 +20,21 @@ struct MinhocaHead {
 #[derive(Component)]
 struct MinhocaSegment;
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Deref, DerefMut)]
 struct MinhocaSegments(Vec<Entity>);
+
+#[derive(Component)]
+struct Positions;
 
 #[derive(Resource, Default)]
 struct MousePosition(Option<Vec2>);
-
-const BOUNDS: f32 = 1024.0;
-const SEGMENT_DIST: f32 = 32.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup_world)
         .add_startup_system(setup_minhoca)
+        .add_startup_system(setup_bounds)
         .insert_resource(MinhocaSegments::default())
         .insert_resource(MousePosition::default())
         .add_system(mouse_position_system.before(player_movement_system))
@@ -40,12 +44,7 @@ fn main() {
         .run();
 }
 
-fn setup_world(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
+fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
     let bg_tile: Handle<Image> = asset_server.load("background-tile.png");
     commands.spawn((Camera2dBundle::default(), MainCamera));
 
@@ -64,7 +63,13 @@ fn setup_world(
             ));
         }
     }
+}
 
+fn setup_bounds(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     // Torus is a 3d shape, so we need to ratate it to face the camera.
     let torus_mesh = Mesh::from(shape::Torus {
         radius: BOUNDS + 16.,
@@ -75,46 +80,61 @@ fn setup_world(
     commands.spawn(MaterialMesh2dBundle {
         mesh: Mesh2dHandle::from(meshes.add(torus_mesh)),
         material: materials.add(ColorMaterial::from(Color::PINK)),
-        transform: Transform::from_translation(Vec3::new(0., 0., 1.0))
-            .with_rotation(Quat::from_rotation_x(PI / 2.)),
+        transform: Transform::from_xyz(0., 0., 1.0).with_rotation(Quat::from_rotation_x(PI / 2.)),
         ..default()
     });
 }
 
-fn setup_minhoca(mut commands: Commands, asset_server: Res<AssetServer>, mut segments: ResMut<MinhocaSegments>) {
+fn setup_minhoca(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut segments: ResMut<MinhocaSegments>,
+) {
     *segments = MinhocaSegments(vec![
-        commands.spawn((
-            SpriteBundle {
-                texture: asset_server.load("minhoca_head.png"),
-                transform: Transform::from_translation(Vec3::new(0.0, 0.0, 2.0)),
-                ..default()
-            },
-            MinhocaHead {
-                movement_speed: 200.0,
-                rotation_speed: f32::to_radians(180.0),
-            },
-            MinhocaSegment
-        )).id(),
-        spawn_segment(&mut commands, &asset_server),
-        spawn_segment(&mut commands, &asset_server),
+        commands
+            .spawn((
+                SpriteBundle {
+                    texture: asset_server.load("minhoca_head.png"),
+                    transform: Transform::from_xyz(0.0, 0.0, 2.0),
+                    ..default()
+                },
+                MinhocaHead {
+                    movement_speed: 200.0,
+                    rotation_speed: f32::to_radians(180.0),
+                },
+                MinhocaSegment,
+            ))
+            .id(),
+        spawn_segment(&mut commands, &asset_server, 0., -1. * SEGMENT_DIST),
+        spawn_segment(&mut commands, &asset_server, 0., -2. * SEGMENT_DIST),
+        spawn_segment(&mut commands, &asset_server, 0., -3. * SEGMENT_DIST),
+        spawn_segment(&mut commands, &asset_server, 0., -4. * SEGMENT_DIST),
+        spawn_segment(&mut commands, &asset_server, 0., -5. * SEGMENT_DIST),
     ]);
 }
 
-fn spawn_segment(commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
-    commands.spawn((
-        SpriteBundle {
-            texture: asset_server.load("minhoca_segment.png"),
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 2.0)),
-            ..default()
-        },
-        MinhocaSegment
-    )).id()
+fn spawn_segment(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    x: f32,
+    y: f32,
+) -> Entity {
+    commands
+        .spawn((
+            SpriteBundle {
+                texture: asset_server.load("minhoca_segment.png"),
+                transform: Transform::from_xyz(x, y, 2.0),
+                ..default()
+            },
+            MinhocaSegment,
+        ))
+        .id()
 }
 
 fn mouse_position_system(
     windows: Res<Windows>,
     query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut mouse_pos: ResMut<MousePosition>
+    mut mouse_pos: ResMut<MousePosition>,
 ) {
     let window = windows.get_primary().unwrap();
     let (camera, cam_global_transform) = query.single();
@@ -132,54 +152,42 @@ fn mouse_position_system(
 
 fn player_movement_system(
     time: Res<Time>,
-    head: Query<(Entity, &Transform, &MinhocaHead)>,
-    mut positions: Query<&mut Transform, With<MinhocaSegment>>,
+    mut head: Query<(&mut Transform, &MinhocaHead)>,
+    mut minhoca: Query<(&mut Transform, &MinhocaSegment), Without<MinhocaHead>>,
     mouse_pos: Res<MousePosition>,
-    segments: Res<MinhocaSegments>
 ) {
     let delta = time.delta_seconds();
-    let (head_entity, transform, minhoca_head) = head.single();
+    let (mut head_transform, head_minhoca) = head.single_mut();
 
     let rotation_sign = if let Some(mouse) = mouse_pos.0 {
-        let movement_direction = (transform.rotation * Vec3::Y).truncate();
-        let mouse_direction = mouse - transform.translation.truncate();
+        let movement_direction = (head_transform.rotation * Vec3::Y).truncate();
+        let mouse_direction = mouse - head_transform.translation.truncate();
         let side = movement_direction.perp().dot(mouse_direction);
         side.signum()
     } else {
         0.0
     };
 
-    let tfs: Vec<Transform> = positions.iter().cloned().collect();
-    let mut transform = tfs[0];
-    transform.rotate_z(rotation_sign * minhoca_head.rotation_speed * delta);
-    let movement_direction = transform.rotation * Vec3::Y;
-    let movement_distance = minhoca_head.movement_speed * delta;
-    transform.translation += movement_direction * movement_distance;
-    let mut foo = positions.get_mut(head_entity).unwrap();
-    *foo = transform;
+    head_transform.rotate_z(rotation_sign * head_minhoca.rotation_speed * delta);
+    let dx = head_minhoca.movement_speed * delta;
+    let dv = head_transform.rotation * Vec3::Y;
+    head_transform.translation += dx * dv;
 
-
-    // for entity in segments.0.iter().skip(1) {
-    //     let mut t = positions.get_mut(*entity).unwrap();
-    //     let dist = t.translation - transform.translation;
-    //     let length = dist.length();
-    //     let new_pos = transform.translation + dist.normalize() * f32::min(length, SEGMENT_DIST);
-    //     transform = t;
-    //     t.translation = new_pos;
-    // }
-
-    // if transform.translation.length() > BOUNDS {
-    //     transform.translation = transform.translation
-    //         - (transform.translation.length() - BOUNDS) * transform.translation.normalize();
-    // }
-
+    let mut head_pos = head_transform.translation;
+    for (mut transform, _) in minhoca.iter_mut() {
+        let old_pos = transform.translation;
+        let dir = old_pos - head_pos;
+        let new_pos = head_pos + dir.normalize() * f32::min(SEGMENT_DIST, dir.length());
+        transform.translation = new_pos;
+        head_pos = new_pos;
+    }
 }
 
 fn camera_movement_system(
-    q_player: Query<&Transform, With<MinhocaHead>>,
+    q_player: Query<(&Transform, With<MinhocaHead>), Without<MainCamera>>,
     mut q_camera: Query<&mut Transform, With<MainCamera>>,
 ) {
-    let transform = q_player.single();
+    let transform = q_player.single().0;
     let mut cam_transform = q_camera.single_mut();
     cam_transform.translation.x = transform.translation.x;
     cam_transform.translation.y = transform.translation.y;
