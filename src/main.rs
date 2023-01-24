@@ -1,65 +1,51 @@
 use bevy::{prelude::*, sprite::MaterialMesh2dBundle, sprite::Mesh2dHandle};
-use rand::Rng;
-use std::time::Duration;
 
 use std::f32::consts::PI;
 
 #[derive(Component)]
-struct Food;
-
-#[derive(Component)]
 struct MainCamera;
-
-#[derive(Resource)]
-struct FoodTimer(Timer);
 
 #[derive(Component)]
 struct BackgroundTile;
 
-const BOUNDS: f32 = 1024.0;
-const MAX_FOOD_DENSITY: f32 = 2.0 / 64.0 / 64.0;
-const MAX_FOOD: usize = (BOUNDS * BOUNDS * PI * MAX_FOOD_DENSITY) as usize;
-
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_startup_system(setup)
-        .add_system(player_movement_system)
-        .add_system(spawn_food)
-        .add_system(bevy::window::close_on_esc)
-        .run();
-}
-
 #[derive(Component)]
-struct Player {
+struct MinhocaHead {
     movement_speed: f32,
     rotation_speed: f32,
 }
 
-fn setup(
+#[derive(Component)]
+struct MinhocaSegment;
+
+#[derive(Resource, Default)]
+struct MinhocaSegments(Vec<Entity>);
+
+#[derive(Resource, Default)]
+struct MousePosition(Option<Vec2>);
+
+const BOUNDS: f32 = 1024.0;
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_startup_system(setup_world)
+        .add_startup_system(setup_minhoca)
+        .insert_resource(MinhocaSegments::default())
+        .insert_resource(MousePosition::default())
+        .add_system(mouse_position_system.before(player_movement_system))
+        .add_system(player_movement_system)
+        .add_system(bevy::window::close_on_esc)
+        .run();
+}
+
+fn setup_world(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let bg_tile: Handle<Image> = asset_server.load("background-tile.png");
-    let snake_handle = asset_server.load("minhoca_head.png");
-    commands.insert_resource(FoodTimer(Timer::new(
-        Duration::from_millis(10),
-        TimerMode::Repeating,
-    )));
     commands.spawn((Camera2dBundle::default(), MainCamera));
-    commands.spawn((
-        SpriteBundle {
-            texture: snake_handle,
-            transform: Transform::from_xyz(0.0, 0.0, 3.0),
-            ..default()
-        },
-        Player {
-            movement_speed: 200.0,
-            rotation_speed: f32::to_radians(180.0),
-        },
-    ));
 
     // TODO: get width and height from bg_tile
     let width = 512.0;
@@ -87,32 +73,71 @@ fn setup(
     commands.spawn(MaterialMesh2dBundle {
         mesh: Mesh2dHandle::from(meshes.add(torus_mesh)),
         material: materials.add(ColorMaterial::from(Color::PINK)),
-        transform: Transform::from_translation(Vec3::new(0., 0., 10.))
+        transform: Transform::from_translation(Vec3::new(0., 0., 1.0))
             .with_rotation(Quat::from_rotation_x(PI / 2.)),
         ..default()
     });
 }
 
-fn player_movement_system(
-    time: Res<Time>,
-    windows: Res<Windows>,
-    mut q_camera: Query<(&Camera, &mut Transform, &GlobalTransform), With<MainCamera>>,
-    mut q_player: Query<(&Player, &mut Transform), Without<MainCamera>>,
-) {
-    let delta = time.delta_seconds();
-    let (minhoca, mut transform) = q_player.single_mut();
-    let window = windows.get_primary().unwrap();
-    let (camera, mut cam_transform, cam_global_transform) = q_camera.single_mut();
+fn setup_minhoca(mut commands: Commands, asset_server: Res<AssetServer>, mut segments: ResMut<MinhocaSegments>) {
+    *segments = MinhocaSegments(vec![
+        commands.spawn((
+            SpriteBundle {
+                texture: asset_server.load("minhoca_head.png"),
+                transform: Transform::from_translation(Vec3::new(0.0, 0.0, 2.0)),
+                ..default()
+            },
+            MinhocaHead {
+                movement_speed: 200.0,
+                rotation_speed: f32::to_radians(180.0),
+            },
+        )).id(),
+        spawn_segment(&mut commands, &asset_server),
+        spawn_segment(&mut commands, &asset_server),
+    ]);
+}
 
-    let rotation_sign = if let Some(screen_pos) = window.cursor_position() {
+fn spawn_segment(commands: &mut Commands, asset_server: &Res<AssetServer>) -> Entity {
+    commands.spawn((
+        SpriteBundle {
+            texture: asset_server.load("minhoca_segment.png"),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 2.0)),
+            ..default()
+        },
+        MinhocaSegment
+    )).id()
+}
+
+fn mouse_position_system(
+    windows: Res<Windows>,
+    query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut mouse_pos: ResMut<MousePosition>
+) {
+    let window = windows.get_primary().unwrap();
+    let (camera, cam_global_transform) = query.single();
+    *mouse_pos = if let Some(screen_pos) = window.cursor_position() {
         let win_size = Vec2::new(window.width(), window.height());
         let ndc = (screen_pos / win_size) * 2.0 - Vec2::ONE;
         let ndc_to_world =
             cam_global_transform.compute_matrix() * camera.projection_matrix().inverse();
         let pos = ndc_to_world.project_point3(ndc.extend(-1.0)).truncate();
+        MousePosition(Some(Vec2::new(pos.x, pos.y)))
+    } else {
+        MousePosition(None)
+    };
+}
 
+fn player_movement_system(
+    time: Res<Time>,
+    mut q_player: Query<(&MinhocaHead, &mut Transform), Without<MainCamera>>,
+    mut q_camera: Query<&mut Transform, With<MainCamera>>,
+    mouse_pos: Res<MousePosition>,
+) {
+    let delta = time.delta_seconds();
+    let (minhoca, mut transform) = q_player.single_mut();
+
+    let rotation_sign = if let Some(mouse) = mouse_pos.0 {
         let movement_direction = (transform.rotation * Vec3::Y).truncate();
-        let mouse = Vec2::new(pos.x, pos.y);
         let mouse_direction = mouse - transform.translation.truncate();
         let side = movement_direction.perp().dot(mouse_direction);
         side.signum()
@@ -130,39 +155,7 @@ fn player_movement_system(
             - (transform.translation.length() - BOUNDS) * transform.translation.normalize();
     }
 
-    // let extents = Vec3::from((BOUNDS / 2.0, 0.0));
-    // transform.translation = transform.translation.min(extents).max(-extents);
-
+    let mut cam_transform = q_camera.single_mut();
     cam_transform.translation.x = transform.translation.x;
     cam_transform.translation.y = transform.translation.y;
-}
-
-fn spawn_food(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut timer: ResMut<FoodTimer>,
-    asset_server: Res<AssetServer>,
-    q_food: Query<(), With<Food>>,
-) {
-    let food_handle = asset_server.load("food.png");
-
-    let mut rng = rand::thread_rng();
-    let n_food = q_food.iter().count();
-
-    if timer.0.tick(time.delta()).just_finished() && n_food < MAX_FOOD {
-        let mut x = rng.gen_range(-BOUNDS..BOUNDS);
-        let mut y = rng.gen_range(-BOUNDS..BOUNDS);
-        while x * x + y * y > BOUNDS * BOUNDS {
-            x = rng.gen_range(-BOUNDS..BOUNDS);
-            y = rng.gen_range(-BOUNDS..BOUNDS);
-        }
-        commands.spawn((
-            SpriteBundle {
-                texture: food_handle,
-                transform: Transform::from_xyz(x, y, 4.0),
-                ..default()
-            },
-            Food,
-        ));
-    }
 }
