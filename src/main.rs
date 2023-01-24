@@ -24,6 +24,7 @@ struct MinhocaSegments(Vec<Entity>);
 struct MousePosition(Option<Vec2>);
 
 const BOUNDS: f32 = 1024.0;
+const SEGMENT_DIST: f32 = 32.0;
 
 fn main() {
     App::new()
@@ -33,7 +34,8 @@ fn main() {
         .insert_resource(MinhocaSegments::default())
         .insert_resource(MousePosition::default())
         .add_system(mouse_position_system.before(player_movement_system))
-        .add_system(player_movement_system)
+        .add_system(player_movement_system.before(camera_movement_system))
+        .add_system(camera_movement_system)
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -91,6 +93,7 @@ fn setup_minhoca(mut commands: Commands, asset_server: Res<AssetServer>, mut seg
                 movement_speed: 200.0,
                 rotation_speed: f32::to_radians(180.0),
             },
+            MinhocaSegment
         )).id(),
         spawn_segment(&mut commands, &asset_server),
         spawn_segment(&mut commands, &asset_server),
@@ -129,12 +132,13 @@ fn mouse_position_system(
 
 fn player_movement_system(
     time: Res<Time>,
-    mut q_player: Query<(&MinhocaHead, &mut Transform), Without<MainCamera>>,
-    mut q_camera: Query<&mut Transform, With<MainCamera>>,
+    head: Query<(Entity, &Transform, &MinhocaHead)>,
+    mut positions: Query<&mut Transform, With<MinhocaSegment>>,
     mouse_pos: Res<MousePosition>,
+    segments: Res<MinhocaSegments>
 ) {
     let delta = time.delta_seconds();
-    let (minhoca, mut transform) = q_player.single_mut();
+    let (head_entity, transform, minhoca_head) = head.single();
 
     let rotation_sign = if let Some(mouse) = mouse_pos.0 {
         let movement_direction = (transform.rotation * Vec3::Y).truncate();
@@ -145,16 +149,37 @@ fn player_movement_system(
         0.0
     };
 
-    transform.rotate_z(rotation_sign * minhoca.rotation_speed * delta);
+    let tfs: Vec<Transform> = positions.iter().cloned().collect();
+    let mut transform = tfs[0];
+    transform.rotate_z(rotation_sign * minhoca_head.rotation_speed * delta);
     let movement_direction = transform.rotation * Vec3::Y;
-    let movement_distance = minhoca.movement_speed * delta;
+    let movement_distance = minhoca_head.movement_speed * delta;
     transform.translation += movement_direction * movement_distance;
+    let mut foo = positions.get_mut(head_entity).unwrap();
+    *foo = transform;
 
-    if transform.translation.length() > BOUNDS {
-        transform.translation = transform.translation
-            - (transform.translation.length() - BOUNDS) * transform.translation.normalize();
-    }
 
+    // for entity in segments.0.iter().skip(1) {
+    //     let mut t = positions.get_mut(*entity).unwrap();
+    //     let dist = t.translation - transform.translation;
+    //     let length = dist.length();
+    //     let new_pos = transform.translation + dist.normalize() * f32::min(length, SEGMENT_DIST);
+    //     transform = t;
+    //     t.translation = new_pos;
+    // }
+
+    // if transform.translation.length() > BOUNDS {
+    //     transform.translation = transform.translation
+    //         - (transform.translation.length() - BOUNDS) * transform.translation.normalize();
+    // }
+
+}
+
+fn camera_movement_system(
+    q_player: Query<&Transform, With<MinhocaHead>>,
+    mut q_camera: Query<&mut Transform, With<MainCamera>>,
+) {
+    let transform = q_player.single();
     let mut cam_transform = q_camera.single_mut();
     cam_transform.translation.x = transform.translation.x;
     cam_transform.translation.y = transform.translation.y;
