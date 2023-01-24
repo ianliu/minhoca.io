@@ -152,12 +152,13 @@ fn mouse_position_system(
 
 fn player_movement_system(
     time: Res<Time>,
-    mut head: Query<(&mut Transform, &MinhocaHead)>,
-    mut minhoca: Query<(&mut Transform, &MinhocaSegment), Without<MinhocaHead>>,
+    head: Query<&MinhocaHead>,
+    mut minhoca: Query<(&mut Transform, &MinhocaSegment)>,
     mouse_pos: Res<MousePosition>,
 ) {
     let delta = time.delta_seconds();
-    let (mut head_transform, head_minhoca) = head.single_mut();
+    let mut segments = minhoca.iter_mut();
+    let (mut head_transform, _) = segments.next().unwrap();
 
     let rotation_sign = if let Some(mouse) = mouse_pos.0 {
         let movement_direction = (head_transform.rotation * Vec3::Y).truncate();
@@ -168,16 +169,17 @@ fn player_movement_system(
         0.0
     };
 
-    head_transform.rotate_z(rotation_sign * head_minhoca.rotation_speed * delta);
-    let dx = head_minhoca.movement_speed * delta;
+    let minhoca_head = head.single();
+    head_transform.rotate_z(rotation_sign * minhoca_head.rotation_speed * delta);
+    let dx = minhoca_head.movement_speed * delta;
     let dv = head_transform.rotation * Vec3::Y;
     head_transform.translation += dx * dv;
 
     let mut head_pos = head_transform.translation;
-    for (mut transform, _) in minhoca.iter_mut() {
+    for (mut transform, _) in segments {
         let old_pos = transform.translation;
-        let dir = old_pos - head_pos;
-        let new_pos = head_pos + dir.normalize() * f32::min(SEGMENT_DIST, dir.length());
+        let direction = old_pos - head_pos;
+        let new_pos = head_pos + direction.normalize() * f32::min(SEGMENT_DIST, direction.length());
         transform.translation = new_pos;
         head_pos = new_pos;
     }
