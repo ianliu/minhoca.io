@@ -193,6 +193,8 @@ fn player_movement_system(
     let mut head_transform = segment_transforms
         .get_mut(*entities.next().unwrap())
         .unwrap();
+
+    // get rotation direction
     let rotation_sign = if let Some(mouse) = mouse_pos.0 {
         let movement_direction = (head_transform.rotation * Vec3::Y).truncate();
         let mouse_direction = mouse - head_transform.translation.truncate();
@@ -211,14 +213,19 @@ fn player_movement_system(
     head_transform.rotate_z(rotation_sign * rotation_speed * delta);
     head_transform.translation += dx * dv;
 
+    // move the body
     let mut head_transform = head_transform.clone();
     entities.for_each(|e| {
         let mut seg_transform = segment_transforms.get_mut(*e).unwrap();
-        let direction = seg_transform.translation - head_transform.translation;
+        let seg_direction = (seg_transform.rotation * Vec3::Y).truncate();
+        let new_direction = seg_transform.translation - head_transform.translation;
         let new_translation = head_transform.translation
-            + direction.normalize() * f32::min(SEGMENT_SIZE, direction.length());
-        let new_transform =
+            + new_direction.normalize() * f32::min(SEGMENT_SIZE, new_direction.length());
+        let mut new_transform =
             Transform::from_translation(new_translation).with_rotation(seg_transform.rotation);
+        new_transform.rotate(Quat::from_rotation_z(
+            seg_direction.angle_between(new_direction.truncate()),
+        ));
         *seg_transform = new_transform;
         head_transform = new_transform;
     });
