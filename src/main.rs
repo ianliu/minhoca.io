@@ -1,5 +1,5 @@
 use bevy::{prelude::*, sprite::MaterialMesh2dBundle, sprite::Mesh2dHandle};
-
+use rand::prelude::*;
 use std::f32::consts::PI;
 
 const BOUNDS: f32 = 1024.0;
@@ -41,8 +41,14 @@ struct MinhocaSegments(Vec<Entity>);
 #[derive(Component)]
 struct Positions;
 
+#[derive(Component)]
+struct Food(i32);
+
 #[derive(Resource, Default)]
 struct MousePosition(Option<Vec2>);
+
+#[derive(Resource)]
+struct FoodTimer(Timer);
 
 fn main() {
     App::new()
@@ -52,9 +58,11 @@ fn main() {
         .add_startup_system(setup_bounds)
         // .insert_resource(MinhocaSegments::default())
         .insert_resource(MousePosition::default())
+        .insert_resource(FoodTimer(Timer::from_seconds(0.1, TimerMode::Repeating)))
         .add_system(mouse_position_system.before(player_movement_system))
         .add_system(player_movement_system.before(camera_movement_system))
         .add_system(collision_system)
+        .add_system(spawn_food_system)
         .add_system(camera_movement_system)
         .add_system(bevy::window::close_on_esc)
         .run();
@@ -87,7 +95,7 @@ fn setup_bounds(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let torus_mesh = Mesh::from(shape::Torus {
-        radius: BOUNDS + 16.,
+        radius: BOUNDS + 32.,
         ring_radius: 16.,
         subdivisions_segments: 128,
         subdivisions_sides: 4,
@@ -241,8 +249,8 @@ fn camera_movement_system(
     cam_transform.translation.y = head_transform.translation.y;
 }
 
-fn check_collision_circles(r1: f32, c1: Vec3, r2: f32, c2: Vec3) -> bool {
-    let distance = (c1.x - c2.x).powi(2) + (c1.y - c2.y).powi(2);
+fn check_collision_circles(r1: f32, c1: Vec2, r2: f32, c2: Vec2) -> bool {
+    let distance = (c1 - c2).dot(c1 - c2);
     if distance <= (r1 + r2).powi(2) {
         return true;
     }
@@ -251,27 +259,55 @@ fn check_collision_circles(r1: f32, c1: Vec3, r2: f32, c2: Vec3) -> bool {
 
 fn collision_system(
     heads: Query<(&Transform, &Collider), With<MinhocaHead>>,
-    colliders: Query<(&Transform, &Collider), (With<Collider>, Without<MinhocaHead>)>,
+    colliders: Query<(Entity, &Transform, &Collider), (With<Collider>, Without<MinhocaHead>)>,
     mut commands: Commands,
 ) {
     let (head_pos, head_collider) = heads.single();
     let r1 = head_collider.radius;
-    let c1 = head_pos.translation;
+    let c1 = head_pos.translation.truncate();
 
-    let mut s = 0;
-    for (transform, collider) in colliders.iter().filter(|e| match e.1.layer {
-        CollisionLayer::HEAD => false,
-        CollisionLayer::SEGMENT => false,
-        CollisionLayer::FOOD => true,
-        CollisionLayer::BOUNDS => true,
-    }) {
+    for (e, transform, collider) in colliders.iter() {
         let r2 = collider.radius;
-        let c2 = transform.translation;
-        if check_collision_circles(r1, c1, r2, c2) {
-            s += 1;
+        let c2 = transform.translation.truncate();
+        match collider.layer {
+            CollisionLayer::HEAD => (),
+            CollisionLayer::BOUNDS => (),
+            CollisionLayer::FOOD => {
+                if check_collision_circles(r1, c1, r2, c2) {
+                    commands.entity(e).despawn();
+                    println!("Just ate some food!");
+                }
+            }
+            CollisionLayer::SEGMENT => (),
         }
     }
-    // println!("Head collided with {:?} elements this frame.", s);
-    // println!("HEAD AT: {:?}", head_pos.translation);
-    // println!("SPEED: {:?}", minhoca_head.movement_speed);
+}
+
+fn spawn_food_system(
+    time: Res<Time>,
+    mut timer: ResMut<FoodTimer>,
+    assets: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    if timer.0.tick(time.delta()).just_finished() {
+        let mut x = thread_rng().gen_range(-BOUNDS..BOUNDS);
+        let mut y = thread_rng().gen_range(-BOUNDS..BOUNDS);
+        while x * x + y * y > BOUNDS * BOUNDS {
+            x = thread_rng().gen_range(-BOUNDS..BOUNDS);
+            y = thread_rng().gen_range(-BOUNDS..BOUNDS);
+        }
+        let food_texture: Handle<Image> = assets.load("food.png");
+        commands.spawn((
+            SpriteBundle {
+                texture: food_texture,
+                transform: Transform::from_xyz(x, y, 50.),
+                ..default()
+            },
+            Collider {
+                layer: CollisionLayer::FOOD,
+                radius: 10.,
+            },
+            Food(1),
+        ));
+    }
 }
