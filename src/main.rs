@@ -259,7 +259,7 @@ fn check_collision_circles(r1: f32, c1: Vec2, r2: f32, c2: Vec2) -> bool {
 
 fn collision_system(
     heads: Query<(&Transform, &Collider), With<MinhocaHead>>,
-    colliders: Query<(Entity, &Transform, &Collider), (With<Collider>, Without<MinhocaHead>)>,
+    colliders: Query<(Entity, &Transform, &Collider), With<Collider>>,
     mut commands: Commands,
 ) {
     let (head_pos, head_collider) = heads.single();
@@ -271,7 +271,11 @@ fn collision_system(
         let c2 = transform.translation.truncate();
         match collider.layer {
             CollisionLayer::HEAD => (),
-            CollisionLayer::BOUNDS => (),
+            CollisionLayer::BOUNDS => {
+                if !check_collision_circles(r1, c1, r2, c2) {
+                    println!("OUT OF BOUNDS!");
+                }
+            }
             CollisionLayer::FOOD => {
                 if check_collision_circles(r1, c1, r2, c2) {
                     commands.entity(e).despawn();
