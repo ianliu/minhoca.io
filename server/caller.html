@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+<style type="text/css">
+body {
+  padding: 20px;
+}
+.box {
+  border: 1px solid red;
+  height: 200px;
+  margin: 0 auto;
+  overflow-y: scroll;
+  white-space: pre-wrap;
+}
+.short {
+  height: 50px;
+}
+textarea {
+  width: 100%;
+  height: 100px;
+  resize: none;
+}
+</style>
+<script src="common.js"></script>
+  </head>
+  <body>
+    <h1>Caller</h1>
+    <pre class="box" id="chatlog"></pre>
+    <p><input type="text" id="prompt"><button onclick="sendmessage()">Send</button></p>
+    <h2>Signaling</h2>
+    <h3>My Payload</h3>
+    <pre id="my_payload" class="box short"></pre>
+    <h3>Their Payload</h3>
+    <div><textarea id="their_payload"></textarea></div>
+    <p><button onclick="go()">Go!</button></p>
+    <script type="text/javascript">
+
+      chan = pc.createDataChannel("default");
+      setup_channel("client", chan);
+
+      async function sendmessage() {
+        const el = document.getElementById("prompt");
+        console.log(el.value);
+        chan.send(el.value);
+        const chatlog = document.getElementById("chatlog");
+        chatlog.textContent += "server: " + el.value + "\n";
+        el.value = "";
+      }
+
+      async function go() {
+        const payload = getValue("their_payload");
+        await pc.setRemoteDescription(payload.description);
+        addCandidates(payload.candidates);
+      }
+
+      async function main() {
+        my_payload.description = await pc.createOffer();
+        await pc.setLocalDescription(my_payload.description);
+      }
+
+      main();
+
+    </script>
+  </body>
+</html>
