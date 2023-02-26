@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
   <head>
+    <meta name="viewport" content="width=device-width">
 <style type="text/css">
 body {
   padding: 20px;
@@ -29,7 +30,7 @@ textarea {
     <p><input type="text" id="prompt"><button onclick="sendmessage()">Send</button></p>
     <h2>Signaling</h2>
     <h3>My Payload</h3>
-    <pre id="my_payload" class="box short"></pre>
+    <textarea id="my_payload" class="box short" readonly></textarea>
     <h3>Their Payload</h3>
     <div><textarea id="their_payload"></textarea></div>
     <p><button onclick="go()">Go!</button></p>
