@@ -23,6 +23,7 @@ textarea {
 }
 </style>
 <script src="common.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha512-g2TeAWw5GPnX7z0Kn8nFbYfeHcvAu/tx6d6mrLe/90mkCxO+RcptyYpksUz35EO337F83bZwcmUyHiHamspkfg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   </head>
   <body>
     <h1>Answerer</h1>
@@ -37,14 +38,14 @@ textarea {
     <script type="text/javascript">
 
       pc.ondatachannel = event => {
-        console.log("new channel", event);
+        log("new channel", event);
         chan = event.channel;
         setup_channel("server", chan);
       };
 
       async function sendmessage() {
         const el = document.getElementById("prompt");
-        console.log(el.value);
+        log(el.value);
         chan.send(el.value);
         const chatlog = document.getElementById("chatlog");
         chatlog.textContent += "client: " + el.value + "\n";
@@ -60,5 +61,6 @@ textarea {
       }
 
     </script>
+    <pre id="log" class="box"></pre>
   </body>
 </html>
